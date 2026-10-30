@@ -6,6 +6,11 @@ pluginManagement {
     }
 }
 
+// Provision the Temurin toolchains required by the different Minecraft versions.
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention")
+}
+
 // Plugin Stuff
 include(":even-more-fish-api")
 include(":even-more-fish-plugin")
