@@ -37,12 +37,37 @@ jobs:
     - name: Build with Gradle Wrapper
       run: ./gradlew build
 
+    - name: Verify separate addon packaging
+      run: |
+        python3 - <<'PYCODE'
+        from pathlib import Path
+        from zipfile import ZipFile
+        plugins = list(Path("even-more-fish-plugin/build/libs").glob("*.jar"))
+        assert plugins, "Server plugin JAR missing"
+        for plugin in plugins:
+            with ZipFile(plugin) as archive:
+                assert not any(name.startswith("addons/") for name in archive.namelist()), "Server plugin contains embedded addons"
+        addons = list(Path("addons/even-more-fish-addons-excellenteconomy/build/libs").glob("*.jar"))
+        assert addons, "Standalone ExcellentEconomy addon JAR missing"
+        for addon in addons:
+            with ZipFile(addon) as archive:
+                assert "org/evenmorefish/fish/addons/ExcellentEconomyAddonLoader.class" in archive.namelist()
+                assert "plugin.yml" not in archive.namelist(), "Native addon packaged as a server plugin"
+        PYCODE
+
     - name: Upload server plugin
       uses: actions/upload-artifact@v4
       with:
         name: EvenMoreFish-plugin
         if-no-files-found: error
         path: even-more-fish-plugin/build/libs/*.jar
+
+    - name: Upload optional addons
+      uses: actions/upload-artifact@v4
+      with:
+        name: EvenMoreFish-addons
+        if-no-files-found: error
+        path: addons/even-more-fish-addons-*/build/libs/*.jar
 
     - name: Upload Gradle test reports
       if: always()

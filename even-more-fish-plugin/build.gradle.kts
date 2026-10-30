@@ -164,19 +164,6 @@ sonar {
     }
 }
 
-val copyAddons = tasks.register<Copy>("copyAddons") {
-    description = "Copies addon jars to the resources folder."
-
-    // Make sure the plugin waits for the addons to be built first
-    dependsOn(
-        ":addons:even-more-fish-addons-excellenteconomy:build"
-    )
-
-    from(project(":addons:even-more-fish-addons-excellenteconomy").layout.buildDirectory.dir("libs"))
-
-    into(file("src/main/resources/addons"))
-}
-
 val copyVersions = tasks.register<Copy>("copyVersions") {
     description = "Copies version jars to the resources folder."
 
@@ -199,7 +186,8 @@ val copyVersions = tasks.register<Copy>("copyVersions") {
 
 tasks {
     processResources {
-        dependsOn(copyAddons)
+        // Exclude stale resources left by builds of upstream versions too.
+        exclude("addons/**")
         dependsOn(copyVersions)
     }
 
@@ -208,10 +196,6 @@ tasks {
             val jitpack: Boolean = System.getenv("JITPACK").toBoolean()
             if (jitpack)
                 return@doFirst
-
-            for (file in File(project.projectDir, "src/main/resources/addons").listFiles()!!) {
-                file.delete()
-            }
 
             for (file in File(project.projectDir, "src/main/resources/versions").listFiles()!!) {
                 file.delete()
@@ -226,6 +210,7 @@ tasks {
     }
 
     shadowJar {
+        exclude("addons/**")
         dependsOn(":even-more-fish-api:shadowJar")
     }
 

@@ -256,8 +256,10 @@ public class MainConfig extends ConfigBase {
     }
 
 
+    /** @deprecated Addons are installed separately; bundled addon extraction is no longer supported. */
+    @Deprecated
     public boolean useAdditionalAddons() {
-        return getConfig().getBoolean("addons.additional-addons", true);
+        return false;
     }
 
     public int getNearbyPlayersRequirementRange() { return getConfig().getInt("requirements.nearby-players.range", 20); }
