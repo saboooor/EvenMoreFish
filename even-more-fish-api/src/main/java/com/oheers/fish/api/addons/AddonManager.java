@@ -19,10 +19,9 @@ public class AddonManager {
         this.plugin = plugin;
         this.folder = new File(plugin.getDataFolder(), ADDON_FOLDER);
 
-        // Clean up in case of a crash.
-        FileUtil.deleteDirectory(this.folder);
-        if (!this.folder.mkdirs()) {
-            plugin.getLogger().warning("Could not create addons folder.");
+        // This directory also contains user-installed addons; never delete it.
+        if (!this.folder.isDirectory() && !this.folder.mkdirs()) {
+            throw new IllegalStateException("Could not create addons folder: " + this.folder);
         }
     }
 
@@ -34,7 +33,7 @@ public class AddonManager {
     }
 
     public void unload() {
-        FileUtil.deleteDirectory(this.folder);
+        unloadAll();
     }
 
     private void processJar(File jar) {
@@ -61,9 +60,14 @@ public class AddonManager {
 
 
 
-    // Optional: Add method to unload all addons
     public void unloadAll() {
-        loadedAddons.forEach(AddonLoader::unload);
+        for (AddonLoader loader : loadedAddons) {
+            try {
+                loader.unload();
+            } catch (Exception | LinkageError exception) {
+                plugin.getLogger().log(Level.WARNING, "Could not unload addon " + loader.getClass().getName(), exception);
+            }
+        }
         loadedAddons.clear();
     }
 }
