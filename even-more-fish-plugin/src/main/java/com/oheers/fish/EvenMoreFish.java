@@ -13,6 +13,8 @@ import com.oheers.fish.api.plugin.EMFPlugin;
 import com.oheers.fish.api.registry.EMFRegistry;
 import com.oheers.fish.baits.manager.BaitManager;
 import com.oheers.fish.commands.admin.AdminCommand;
+import com.oheers.fish.commands.ReloadableCommandRegistration;
+import com.oheers.fish.commands.PaperCommandAccess;
 import com.oheers.fish.commands.main.MainCommand;
 import com.oheers.fish.competition.AutoRunner;
 import com.oheers.fish.competition.Competition;
@@ -80,6 +82,7 @@ public class EvenMoreFish extends EMFPlugin {
 
     private static EvenMoreFish instance;
     private EMFAPI api;
+    private ReloadableCommandRegistration commandRegistration;
 
     public static @NonNull EvenMoreFish getInstance() {
         if (instance == null) {
@@ -107,7 +110,6 @@ public class EvenMoreFish extends EMFPlugin {
     @Override
     public void onLoad() {
         instance = this;
-        loadCommands();
         versionProvider.load();
         if (dimensionFishing != null) {
             dimensionFishing.load();
@@ -126,6 +128,8 @@ public class EvenMoreFish extends EMFPlugin {
 
         this.configurationManager = new ConfigurationManager(this);
         this.configurationManager.loadConfigurations(); //need to test, order may be important
+
+        loadCommands();
 
         // Load external deps
         this.dependencyManager.checkDependencies(); // need to test, order may be important, if it is, we introduce multiple stages with events
@@ -178,6 +182,13 @@ public class EvenMoreFish extends EMFPlugin {
 
     @Override
     public void onDisable() {
+        // Remove main commands, namespaced labels and aliases before PlugMan can unload our classes.
+        if (commandRegistration != null) {
+            try { commandRegistration.unregister(); }
+            catch (IllegalStateException ex) { getLogger().log(java.util.logging.Level.WARNING, "Could not clean up commands", ex); }
+            commandRegistration = null;
+        }
+
         // Do this first.
         CompetitionManager.getInstance().getAutoRunner().stop();
 
@@ -394,13 +405,31 @@ public class EvenMoreFish extends EMFPlugin {
 
     @SuppressWarnings("UnstableApiUsage")
     public void loadCommands() {
-        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS.newHandler(event -> {
-            event.registrar().register(new MainCommand().get(), MainConfig.getInstance().getMainCommandAliases());
+        // Paper removes plugin lifecycle handlers on disable. Register again on every enable.
+        commandRegistration = new ReloadableCommandRegistration(registrar -> {
+            java.util.Set<String> labels = new java.util.HashSet<>();
+            labels.addAll(registrar.register(getPluginMeta(), new MainCommand().get(), null,
+                MainConfig.getInstance().getMainCommandAliases()));
             if (MainConfig.getInstance().isAdminShortcutCommandEnabled()) {
                 String shortcut = MainConfig.getInstance().getAdminShortcutCommandName();
-                event.registrar().register(new AdminCommand(shortcut).get());
+                labels.addAll(registrar.register(getPluginMeta(), new AdminCommand(shortcut).get(), null, List.of()));
             }
-        }));
+            return labels;
+        });
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS.newHandler(event ->
+            commandRegistration.register(event.registrar())));
+
+        // At normal startup Paper fires COMMANDS before the first tick. PlugMan late loads need a fallback.
+        getServer().getGlobalRegionScheduler().run(this, task -> {
+            if (commandRegistration == null) return;
+            try {
+                commandRegistration.registerIfMissing(action ->
+                    PaperCommandAccess.withRegistrar(getServer().getClass().getClassLoader(), action));
+                resendCommands();
+            } catch (IllegalStateException ex) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Could not restore commands after a late plugin load", ex);
+            }
+        });
     }
 
     public void resendCommands() {
